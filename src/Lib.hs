@@ -22,6 +22,14 @@ instance Functor List where
 instance Foldable List where
     foldr f z = foldrS f z . stream
 
+instance Applicative List where
+    pure = return'
+    fs <*> xs = concatMap' fs $ \f -> fmap f xs
+
+instance Monad List where
+    return = pure
+    (>>=) = concatMap'
+
 stream :: List a -> Stream a
 stream = Stream next
     where
@@ -97,5 +105,18 @@ append' a b = unstream $ (appendS `on` stream) a b
 concatS :: Stream (Stream a) -> Stream a
 concatS = foldrS appendS emptyS
 
+concatMapS :: Stream a -> (a -> Stream b) -> Stream b
+concatMapS (Stream next s0) k = Stream next' (s0, Nothing) where
+    next' (s, Nothing) = case next s of
+      Done -> Done
+      Skip s' -> Skip (s', Nothing)
+      Yield a s' -> Skip (s', Just (k a))
+    next' (s, Just (Stream nextb sb)) = case nextb sb of
+      Done -> Skip (s, Nothing)
+      Skip sb' -> Skip (s, Just (Stream nextb sb'))
+      Yield b sb' -> Yield b (s, Just (Stream nextb sb'))
+
+concatMap' :: List a -> (a -> List b) -> List b
+concatMap' xs k = unstream (concatMapS (stream xs) (stream . k))
+
 -- TODO inline everything
--- TODO concatmap from paper
